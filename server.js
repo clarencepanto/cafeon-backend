@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import productsRouter from "./routes/products-router.js";
 import salesRouter from "./routes/sales-router.js";
 import customerRouter from "./routes/customer-router.js";
+import insightsRouter from "./routes/insights-router.js";
 
 // load env variables
 dotenv.config();
@@ -17,6 +18,7 @@ app.use(express.json());
 app.use("/products", productsRouter); // /api/products
 app.use("/sales", salesRouter); // /api/sales
 app.use("/customers", customerRouter); // /api/customers
+app.use("/insights", insightsRouter); // /api/insight (python)
 
 app.use(cors());
 app.use(express.json());
