@@ -1,8 +1,6 @@
 import { Router } from "express";
-import knex from "knex";
-import knexConfig from "../knexfile.js";
+import db from "../db.js";
 
-const db = knex(knexConfig.development);
 const router = Router();
 
 router.post("/", async (req, res) => {
