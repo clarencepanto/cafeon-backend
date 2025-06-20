@@ -66,6 +66,17 @@ router.get("/", async (req, res) => {
   }
 });
 
+// GET latest receipt
+router.get("/latest", async (req, res) => {
+  try {
+    const latest = await db("sales").orderBy("id", "desc").first();
+    res.json({ sale_id: latest?.id || 0 });
+  } catch (err) {
+    console.error("❌ Error fetching latest receipt:", err);
+    res.status(500).json({ error: "Failed to fetch latest receipt" });
+  }
+});
+
 // Get Sale Details
 router.get("/:id", async (req, res) => {
   const { id } = req.params;

@@ -14,7 +14,15 @@ router.get("/", async (req, res) => {
     query = query.where({ category });
   }
 
-  const products = await query;
+  const products = await query.select(
+    "id",
+    "name",
+    "price",
+    "quantity",
+    "image_url",
+    "ingredients"
+  );
+
   res.json(products);
 });
 

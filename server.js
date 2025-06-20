@@ -21,8 +21,6 @@ app.use("/sales", salesRouter); // /api/sales
 app.use("/customers", customerRouter); // /api/customers
 app.use("/insights", insightsRouter); // /api/insight (python)
 
-app.use(express.json());
-
 app.listen(PORT, () => {
   console.log(`✅ Server is running on http://localhost:${PORT}`);
 });
