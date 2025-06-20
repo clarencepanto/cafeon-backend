@@ -8,8 +8,9 @@ import insightsRouter from "./routes/insights-router.js";
 
 // load env variables
 dotenv.config();
-
 const app = express();
+app.use(cors());
+
 const PORT = process.env.PORT || 4000;
 
 // for parsing json payloads
@@ -20,7 +21,6 @@ app.use("/sales", salesRouter); // /api/sales
 app.use("/customers", customerRouter); // /api/customers
 app.use("/insights", insightsRouter); // /api/insight (python)
 
-app.use(cors());
 app.use(express.json());
 
 app.listen(PORT, () => {

@@ -4,14 +4,18 @@ import db from "../db.js";
 const router = Router();
 
 // GET /api/products
+
 router.get("/", async (req, res) => {
-  try {
-    const products = await db("products");
-    res.json(products);
-  } catch (err) {
-    console.error("Error fetching products:", err);
-    res.status(500).json({ error: "Internal Server Error" });
+  const { category } = req.query;
+
+  let query = db("products");
+
+  if (category) {
+    query = query.where({ category });
   }
+
+  const products = await query;
+  res.json(products);
 });
 
 // POST /api/products

@@ -2,7 +2,7 @@
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-exports.up = function (knex) {
+export async function up(knex) {
   return knex.schema.createTable("customers", (table) => {
     table.increments("id").primary();
     table.string("name").notNullable();
@@ -10,12 +10,12 @@ exports.up = function (knex) {
     table.string("email").nullable();
     table.timestamps(true, true); // track when customer added
   });
-};
+}
 
 /**
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-exports.down = function (knex) {
+export async function down(knex) {
   return knex.schema.dropTableIfExists("customers");
-};
+}

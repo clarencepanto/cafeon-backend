@@ -2,7 +2,7 @@
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-exports.up = function (knex) {
+export async function up(knex) {
   return knex.schema.createTable("sale_items", (table) => {
     table.increments("id").primary();
     table.integer("sale_id").unsigned().notNullable();
@@ -18,12 +18,12 @@ exports.up = function (knex) {
     table.integer("quantity").notNullable();
     table.decimal("price", 10, 2).notNullable(); // unit price at time of sale
   });
-};
+}
 
 /**
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-exports.down = function (knex) {
+export async function down(knex) {
   return knex.schema.dropTableIfExists("sale_items");
-};
+}

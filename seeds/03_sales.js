@@ -2,7 +2,7 @@
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-exports.seed = async function (knex) {
+export async function seed(knex) {
   await knex("sales").del();
 
   await knex("sales").insert([
@@ -25,4 +25,4 @@ exports.seed = async function (knex) {
       created_at: knex.raw(`NOW() - INTERVAL 2 DAY`),
     },
   ]);
-};
+}
