@@ -1,59 +1,176 @@
 import { Router } from "express";
-import fs from "fs";
-import path from "path";
-
+import db from "../db.js";
 const router = Router();
 
-// GET /api/insights/top-products
-router.get("/top-products", (req, res) => {
-  //  process.cwd() means : this project folder , then we navigate to /ai-engine/top_products.json
-  const filePath = path.join(process.cwd(), "ai-engine", "top_products.json");
+router.get("/atv-change", async (req, res) => {
+  const now = new Date();
+  const currentHour = now.getHours();
+  const today = now.toISOString().split("T")[0]; // e.g., "2025-06-16"
 
-  //   reads the filepath declared upstairs
-  fs.readFile(filePath, "utf-8", (err, data) => {
-    if (err) {
-      console.error("Failed to read insights file:", err);
-      return res.status(500).json({ error: "Could not load insights" });
+  try {
+    // Current Hour Sales
+    const currentHourSales = await db("sales")
+      .whereRaw("HOUR(created_at) = ? AND DATE(created_at) = ?", [
+        currentHour,
+        today,
+      ])
+      .select("total");
+
+    const prevHourSales = await db("sales")
+      .whereRaw("HOUR(created_at) = ? AND DATE(created_at) = ?", [
+        currentHour - 1,
+        today,
+      ])
+      .select("total");
+
+    const calcATV = (sales) => {
+      const totalRevenue = sales.reduce((sum, s) => sum + Number(s.total), 0);
+      const transactionCount = sales.length;
+      return transactionCount === 0 ? 0 : totalRevenue / transactionCount;
+    };
+
+    const currentATV = calcATV(currentHourSales);
+    const prevATV = calcATV(prevHourSales);
+
+    let message = "Not enough data to compare.";
+
+    if (prevATV > 0) {
+      const change = ((currentATV - prevATV) / prevATV) * 100;
+      const changeText =
+        change > 0
+          ? `📈 ATV increased by ${change.toFixed(1)}% this hour.`
+          : `📉 ATV decreased by ${Math.abs(change).toFixed(1)}% this hour.`;
+
+      message = changeText;
     }
 
-    try {
-      // converts raw file into real json object
-      const insights = JSON.parse(data);
-      res.json(insights);
-    } catch (parseError) {
-      console.error("Failed to parse JSON:", parseError);
-      res.status(500).json({ error: "Invalid insights format" });
-    }
-  });
+    res.json({
+      currentATV: currentATV.toFixed(2),
+      prevATV: prevATV.toFixed(2),
+      insight: message,
+    });
+  } catch (err) {
+    console.error("Error generating ATV insight:", err);
+    res.status(500).json({ error: "Failed to generate ATV insight" });
+  }
 });
 
-// 🔹 GET /api/insights/weekly-revenue
-router.get("/weekly-revenue", (req, res) => {
-  const filePath = path.join(process.cwd(), "ai-engine", "weekly_revenue.json");
+// revenue insight
+router.get("/revenue-change", async (req, res) => {
+  const now = new Date();
+  const today = now.toISOString().split("T")[0];
 
-  fs.readFile(filePath, "utf-8", (err, data) => {
-    if (err) {
-      console.error("Failed to read revenue file:", err);
-      return res.status(500).json({ error: "Could not load revenue insight" });
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+  try {
+    // Today’s revenue
+    const todaySales = await db("sales")
+      .whereRaw("DATE(created_at) = ?", [today])
+      .select("total");
+
+    // Yesterday’s revenue
+    const yesterdaySales = await db("sales")
+      .whereRaw("DATE(created_at) = ?", [yesterdayStr])
+      .select("total");
+
+    const calcTotal = (sales) =>
+      sales.reduce((sum, s) => sum + Number(s.total), 0);
+
+    const todayTotal = calcTotal(todaySales);
+    const yesterdayTotal = calcTotal(yesterdaySales);
+
+    let message = "Not enough data to compare.";
+
+    if (yesterdayTotal > 0) {
+      const change = ((todayTotal - yesterdayTotal) / yesterdayTotal) * 100;
+      const changeText =
+        change > 0
+          ? `🔥 Today’s revenue ($${todayTotal.toFixed(
+              2
+            )}) is up ${change.toFixed(1)}% vs yesterday.`
+          : `📉 Today’s revenue ($${todayTotal.toFixed(2)}) is down ${Math.abs(
+              change
+            ).toFixed(1)}% vs yesterday.`;
+
+      message = changeText;
     }
 
-    try {
-      const revenue = JSON.parse(data);
-      res.json(revenue);
-    } catch (parseError) {
-      console.error("Invalid revenue JSON:", parseError);
-      res.status(500).json({ error: "Invalid revenue data format" });
+    res.json({
+      today: todayTotal.toFixed(2),
+      yesterday: yesterdayTotal.toFixed(2),
+      insight: message,
+    });
+  } catch (err) {
+    console.error("Error generating revenue insight:", err);
+    res.status(500).json({ error: "Failed to generate revenue insight" });
+  }
+});
+
+// 📦 GET the best-selling product insight (today vs yesterday)
+router.get("/best-product", async (req, res) => {
+  try {
+    // 🕒 Get today's and yesterday's dates
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+
+    // 🔤 Format to YYYY-MM-DD (MySQL-style date)
+    const todayStr = today.toISOString().split("T")[0];
+    const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+    // 📊 Query: Today's top-selling product
+    const todayTop = await db("sale_items")
+      .join("sales", "sales.id", "sale_items.sale_id")
+      .join("products", "products.id", "sale_items.product_id")
+      .whereRaw("DATE(sales.created_at) = ?", [todayStr])
+      .select("products.name")
+      .sum("sale_items.quantity as total_sold")
+      .groupBy("products.name")
+      .orderBy("total_sold", "desc")
+      .first();
+
+    // 📊 Query: Yesterday's top-selling product
+    const yesterdayTop = await db("sale_items")
+      .join("sales", "sales.id", "sale_items.sale_id")
+      .join("products", "products.id", "sale_items.product_id")
+      .whereRaw("DATE(sales.created_at) = ?", [yesterdayStr])
+      .select("products.name")
+      .sum("sale_items.quantity as total_sold")
+      .groupBy("products.name")
+      .orderBy("total_sold", "desc")
+      .first();
+
+    // 🧠 Generate smart insight message
+    let message = "No top-selling data available.";
+    if (todayTop && !yesterdayTop) {
+      message = `🥇 ${todayTop.name} is leading today with ${todayTop.total_sold} sold.`;
+    } else if (!todayTop && yesterdayTop) {
+      message = `📊 Yesterday's top product was ${yesterdayTop.name} with ${yesterdayTop.total_sold} sold.`;
+    } else if (todayTop && yesterdayTop) {
+      const diff = todayTop.total_sold - yesterdayTop.total_sold;
+
+      if (todayTop.name === yesterdayTop.name) {
+        message = `📈 ${todayTop.name} is holding strong with ${todayTop.total_sold} sold again today!`;
+      } else if (diff > 0) {
+        message = `🔥 ${todayTop.name} just beat ${yesterdayTop.name} from yesterday with ${todayTop.total_sold} sold today! (+${diff})`;
+      } else {
+        message = `📉 ${todayTop.name} is leading today with ${
+          todayTop.total_sold
+        } sold, but that's ${Math.abs(diff)} less than ${
+          yesterdayTop.name
+        } yesterday.`;
+      }
     }
-  });
+
+    // ✅ Send the final message
+    res.json({ message });
+  } catch (err) {
+    // ❌ Error handling
+    console.error("❌ Error generating best-product insight:", err);
+    res.status(500).json({ error: "Failed to fetch best product insight" });
+  }
 });
 
 export default router;
-
-// 🎯 Goal: Build /api/insights/top-products
-// This route will:
-
-// Read your top_products.json (from Python)
-
-// Send it as an API response
-
-// So your frontend (or Postman) can fetch and display it

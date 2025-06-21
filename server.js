@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import productsRouter from "./routes/products-router.js";
 import salesRouter from "./routes/sales-router.js";
 import customerRouter from "./routes/customer-router.js";
+import dashboardRouter from "./routes/dashboard-routes.js";
 import insightsRouter from "./routes/insights-router.js";
 
 // load env variables
@@ -19,7 +20,8 @@ app.use(express.json());
 app.use("/products", productsRouter); // /api/products
 app.use("/sales", salesRouter); // /api/sales
 app.use("/customers", customerRouter); // /api/customers
-app.use("/insights", insightsRouter); // /api/insight (python)
+app.use("/dashboard", dashboardRouter);
+app.use("/insights", insightsRouter);
 
 app.listen(PORT, () => {
   console.log(`✅ Server is running on http://localhost:${PORT}`);
