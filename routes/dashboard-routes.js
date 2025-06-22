@@ -50,7 +50,7 @@ router.get("/best-product", async (req, res) => {
 // http://localhost:4000/dashboard/revenue?range=month
 // http://localhost:4000/dashboard/revenue?range=year
 router.get("/revenue", async (req, res) => {
-  const { range = "day" } = req.query;
+  const { range = "Today" } = req.query;
 
   let startDate;
   const today = new Date();
@@ -118,7 +118,7 @@ router.get("/top-products", async (req, res) => {
       .sum("sale_items.quantity as total_sold")
       .groupBy("products.name")
       .orderBy("total_sold", "desc")
-      .limit(5);
+      .limit(20);
 
     res.json(topProducts);
   } catch (err) {
@@ -128,37 +128,23 @@ router.get("/top-products", async (req, res) => {
 });
 
 // sales bar chart
-router.get("/sales-per-hour", async (req, res) => {
+// GET /insights/sales-week
+router.get("/sales-week", async (req, res) => {
   try {
-    const results = await db("sales")
+    const sales = await db("sales")
+      .whereRaw("WEEK(created_at) = WEEK(NOW())")
       .select(
-        db.raw("HOUR(created_at) as hour"),
-        db.raw("COUNT(*) as total_sales"),
-        db.raw("SUM(total) as revenue")
+        db.raw("DAYOFWEEK(created_at) as day_num"),
+        db.raw("DAYNAME(created_at) as day"),
+        db.raw("SUM(total) as total_sales")
       )
-      .whereRaw("DATE(created_at) = CURDATE()") // only today
-      .groupByRaw("HOUR(created_at)")
-      .orderBy("hour");
+      .groupByRaw("DAYOFWEEK(created_at), DAYNAME(created_at)")
+      .orderByRaw("DAYOFWEEK(created_at)");
 
-    // format hours so they’re always present (0 to 23), even if 0 sales
-    const fullDay = Array.from({ length: 24 }, (_, i) => ({
-      hour: i,
-      total_sales: 0,
-      revenue: 0,
-    }));
-
-    for (const row of results) {
-      fullDay[row.hour] = {
-        hour: row.hour,
-        total_sales: row.total_sales,
-        revenue: parseFloat(row.revenue),
-      };
-    }
-
-    res.json(fullDay);
+    res.json(sales);
   } catch (err) {
-    console.error("❌ Error getting sales per hour:", err);
-    res.status(500).json({ error: "Failed to get sales per hour" });
+    console.error("❌ Error fetching weekly sales:", err);
+    res.status(500).json({ error: "Failed to fetch weekly sales" });
   }
 });
 

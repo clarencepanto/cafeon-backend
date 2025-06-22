@@ -5,24 +5,29 @@ const router = Router();
 router.get("/atv-change", async (req, res) => {
   const now = new Date();
   const currentHour = now.getHours();
-  const today = now.toISOString().split("T")[0]; // e.g., "2025-06-16"
+  const prevHour = currentHour === 0 ? 23 : currentHour - 1;
+
+  // Get today’s full date range (00:00 to 23:59) to keep queries accurate
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+
+  const todayEnd = new Date(now);
+  todayEnd.setHours(23, 59, 59, 999);
 
   try {
-    // Current Hour Sales
+    // 🟢 Sales in the current hour
     const currentHourSales = await db("sales")
-      .whereRaw("HOUR(created_at) = ? AND DATE(created_at) = ?", [
-        currentHour,
-        today,
-      ])
+      .whereBetween("created_at", [todayStart, todayEnd])
+      .andWhereRaw("HOUR(created_at) = ?", [currentHour])
       .select("total");
 
+    // 🟡 Sales in the previous hour
     const prevHourSales = await db("sales")
-      .whereRaw("HOUR(created_at) = ? AND DATE(created_at) = ?", [
-        currentHour - 1,
-        today,
-      ])
+      .whereBetween("created_at", [todayStart, todayEnd])
+      .andWhereRaw("HOUR(created_at) = ?", [prevHour])
       .select("total");
 
+    // 🔢 ATV Calculator
     const calcATV = (sales) => {
       const totalRevenue = sales.reduce((sum, s) => sum + Number(s.total), 0);
       const transactionCount = sales.length;
@@ -33,15 +38,12 @@ router.get("/atv-change", async (req, res) => {
     const prevATV = calcATV(prevHourSales);
 
     let message = "Not enough data to compare.";
-
     if (prevATV > 0) {
       const change = ((currentATV - prevATV) / prevATV) * 100;
-      const changeText =
+      message =
         change > 0
           ? `📈 ATV increased by ${change.toFixed(1)}% this hour.`
           : `📉 ATV decreased by ${Math.abs(change).toFixed(1)}% this hour.`;
-
-      message = changeText;
     }
 
     res.json({
@@ -49,101 +51,176 @@ router.get("/atv-change", async (req, res) => {
       prevATV: prevATV.toFixed(2),
       insight: message,
     });
+
+    console.log("🕐 Hour:", currentHour, "Prev:", prevHour);
+    console.log("📅 Today Start:", todayStart.toISOString());
+    console.log("📅 Today End:", todayEnd.toISOString());
+    console.log("📊 Current Hour Sales:", currentHourSales);
+    console.log("⏪ Prev Hour Sales:", prevHourSales);
   } catch (err) {
-    console.error("Error generating ATV insight:", err);
+    console.error("❌ Error generating ATV insight:", err);
     res.status(500).json({ error: "Failed to generate ATV insight" });
   }
 });
 
-// revenue insight
+// GET /insights/revenue-change?range=day|week|month|year
 router.get("/revenue-change", async (req, res) => {
-  const now = new Date();
-  const today = now.toISOString().split("T")[0];
+  const { range = "day" } = req.query;
 
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().split("T")[0];
+  const now = new Date();
+  let currStart, currEnd, prevStart, prevEnd;
+
+  switch (range) {
+    case "week":
+      // This week (7 days incl. today)
+      currEnd = new Date(now);
+      currEnd.setHours(23, 59, 59, 999);
+      currStart = new Date(currEnd);
+      currStart.setDate(currStart.getDate() - 6);
+
+      // Previous week
+      prevEnd = new Date(currStart);
+      prevEnd.setDate(prevEnd.getDate() - 1);
+      prevEnd.setHours(23, 59, 59, 999);
+      prevStart = new Date(prevEnd);
+      prevStart.setDate(prevStart.getDate() - 6);
+      break;
+
+    case "month":
+      // Current month
+      currStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      currEnd = new Date(
+        now.getFullYear(),
+        now.getMonth() + 1,
+        0,
+        23,
+        59,
+        59,
+        999
+      );
+
+      // Previous month
+      prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      prevEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+      break;
+
+    case "year":
+      // Current year
+      currStart = new Date(now.getFullYear(), 0, 1);
+      currEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+
+      // Previous year
+      prevStart = new Date(now.getFullYear() - 1, 0, 1);
+      prevEnd = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59, 999);
+      break;
+
+    default: // "day"
+      currStart = new Date(now);
+      currStart.setHours(0, 0, 0, 0);
+      currEnd = new Date(now);
+      currEnd.setHours(23, 59, 59, 999);
+
+      prevStart = new Date(currStart);
+      prevStart.setDate(prevStart.getDate() - 1);
+      prevEnd = new Date(prevStart);
+      prevEnd.setHours(23, 59, 59, 999);
+      break;
+  }
 
   try {
-    // Today’s revenue
-    const todaySales = await db("sales")
-      .whereRaw("DATE(created_at) = ?", [today])
+    // ✅ Get current period sales
+    const currentSales = await db("sales")
+      .whereBetween("created_at", [currStart, currEnd])
       .select("total");
 
-    // Yesterday’s revenue
-    const yesterdaySales = await db("sales")
-      .whereRaw("DATE(created_at) = ?", [yesterdayStr])
+    // ✅ Get previous period sales
+    const previousSales = await db("sales")
+      .whereBetween("created_at", [prevStart, prevEnd])
       .select("total");
 
     const calcTotal = (sales) =>
       sales.reduce((sum, s) => sum + Number(s.total), 0);
 
-    const todayTotal = calcTotal(todaySales);
-    const yesterdayTotal = calcTotal(yesterdaySales);
+    const currentTotal = calcTotal(currentSales);
+    const previousTotal = calcTotal(previousSales);
 
     let message = "Not enough data to compare.";
 
-    if (yesterdayTotal > 0) {
-      const change = ((todayTotal - yesterdayTotal) / yesterdayTotal) * 100;
-      const changeText =
-        change > 0
-          ? `🔥 Today’s revenue ($${todayTotal.toFixed(
-              2
-            )}) is up ${change.toFixed(1)}% vs yesterday.`
-          : `📉 Today’s revenue ($${todayTotal.toFixed(2)}) is down ${Math.abs(
-              change
-            ).toFixed(1)}% vs yesterday.`;
+    if (previousTotal > 0) {
+      const change = ((currentTotal - previousTotal) / previousTotal) * 100;
+      const label =
+        range === "day"
+          ? "Today"
+          : range === "week"
+          ? "This week"
+          : range === "month"
+          ? "This month"
+          : "This year";
 
-      message = changeText;
+      message =
+        change > 0
+          ? `🚀 ${label}'s revenue ($${currentTotal.toFixed(
+              2
+            )}) is up ${change.toFixed(1)}% vs last ${range}.`
+          : `📉 ${label}'s revenue ($${currentTotal.toFixed(
+              2
+            )}) is down ${Math.abs(change).toFixed(1)}% vs last ${range}.`;
     }
 
     res.json({
-      today: todayTotal.toFixed(2),
-      yesterday: yesterdayTotal.toFixed(2),
+      current: currentTotal.toFixed(2),
+      previous: previousTotal.toFixed(2),
       insight: message,
     });
   } catch (err) {
-    console.error("Error generating revenue insight:", err);
+    console.error("❌ Error generating revenue insight:", err);
     res.status(500).json({ error: "Failed to generate revenue insight" });
   }
 });
 
-// 📦 GET the best-selling product insight (today vs yesterday)
 router.get("/best-product", async (req, res) => {
   try {
-    // 🕒 Get today's and yesterday's dates
-    const today = new Date();
-    const yesterday = new Date();
-    yesterday.setDate(today.getDate() - 1);
+    const now = new Date();
 
-    // 🔤 Format to YYYY-MM-DD (MySQL-style date)
-    const todayStr = today.toISOString().split("T")[0];
-    const yesterdayStr = yesterday.toISOString().split("T")[0];
+    // 📆 Get full-day boundaries for today
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
 
-    // 📊 Query: Today's top-selling product
+    const todayEnd = new Date(now);
+    todayEnd.setHours(23, 59, 59, 999);
+
+    // 📆 Get full-day boundaries for yesterday
+    const yesterdayStart = new Date(todayStart);
+    yesterdayStart.setDate(todayStart.getDate() - 1);
+
+    const yesterdayEnd = new Date(todayEnd);
+    yesterdayEnd.setDate(todayEnd.getDate() - 1);
+
+    // 📊 Get today's top-selling product
     const todayTop = await db("sale_items")
       .join("sales", "sales.id", "sale_items.sale_id")
       .join("products", "products.id", "sale_items.product_id")
-      .whereRaw("DATE(sales.created_at) = ?", [todayStr])
+      .whereBetween("sales.created_at", [todayStart, todayEnd])
       .select("products.name")
       .sum("sale_items.quantity as total_sold")
       .groupBy("products.name")
       .orderBy("total_sold", "desc")
       .first();
 
-    // 📊 Query: Yesterday's top-selling product
+    // 📊 Get yesterday's top-selling product
     const yesterdayTop = await db("sale_items")
       .join("sales", "sales.id", "sale_items.sale_id")
       .join("products", "products.id", "sale_items.product_id")
-      .whereRaw("DATE(sales.created_at) = ?", [yesterdayStr])
+      .whereBetween("sales.created_at", [yesterdayStart, yesterdayEnd])
       .select("products.name")
       .sum("sale_items.quantity as total_sold")
       .groupBy("products.name")
       .orderBy("total_sold", "desc")
       .first();
 
-    // 🧠 Generate smart insight message
+    // 🧠 Insight generation
     let message = "No top-selling data available.";
+
     if (todayTop && !yesterdayTop) {
       message = `🥇 ${todayTop.name} is leading today with ${todayTop.total_sold} sold.`;
     } else if (!todayTop && yesterdayTop) {
@@ -164,10 +241,8 @@ router.get("/best-product", async (req, res) => {
       }
     }
 
-    // ✅ Send the final message
     res.json({ message });
   } catch (err) {
-    // ❌ Error handling
     console.error("❌ Error generating best-product insight:", err);
     res.status(500).json({ error: "Failed to fetch best product insight" });
   }
