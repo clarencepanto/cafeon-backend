@@ -51,12 +51,6 @@ router.get("/atv-change", async (req, res) => {
       prevATV: prevATV.toFixed(2),
       insight: message,
     });
-
-    console.log("🕐 Hour:", currentHour, "Prev:", prevHour);
-    console.log("📅 Today Start:", todayStart.toISOString());
-    console.log("📅 Today End:", todayEnd.toISOString());
-    console.log("📊 Current Hour Sales:", currentHourSales);
-    console.log("⏪ Prev Hour Sales:", prevHourSales);
   } catch (err) {
     console.error("❌ Error generating ATV insight:", err);
     res.status(500).json({ error: "Failed to generate ATV insight" });

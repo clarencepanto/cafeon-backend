@@ -1,14 +1,15 @@
 /**
- * @param { import("knex").Knex } knex
+ * * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
 export async function up(knex) {
-  return knex.schema.createTable("customers", (table) => {
+  await knex.schema.createTable("customers", (table) => {
     table.increments("id").primary();
     table.string("name").notNullable();
-    table.string("phone").nullable();
-    table.string("email").nullable();
-    table.timestamps(true, true); // track when customer added
+    table.string("phone").notNullable();
+    table.string("frequent_order").notNullable(); // main focus
+    table.integer("visits").defaultTo(0);
+    table.timestamps(true, true); // created_at, updated_at
   });
 }
 
@@ -17,5 +18,5 @@ export async function up(knex) {
  * @returns { Promise<void> }
  */
 export async function down(knex) {
-  return knex.schema.dropTableIfExists("customers");
+  await knex.schema.dropTableIfExists("customers");
 }
