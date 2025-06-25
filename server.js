@@ -1,28 +1,36 @@
+// server.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import productsRouter from "./routes/products-router.js";
-import salesRouter from "./routes/sales-router.js";
+import http from "http";
+import { Server } from "socket.io";
+
+import createProductsRouter from "./routes/products-router.js";
+import getSalesRouter from "./routes/sales-router.js";
 import customerRouter from "./routes/customer-router.js";
 import dashboardRouter from "./routes/dashboard-routes.js";
 import insightsRouter from "./routes/insights-router.js";
 
-// load env variables
+// Setup
 dotenv.config();
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: "*" },
+});
+
 app.use(cors());
-
-const PORT = process.env.PORT || 4000;
-
-// for parsing json payloads
 app.use(express.json());
 
-app.use("/products", productsRouter); // /api/products
-app.use("/sales", salesRouter); // /api/sales
-app.use("/customers", customerRouter); // /api/customers
+// Attach routers
+app.use("/products", createProductsRouter(io)); // << pass io directly
+app.use("/sales", getSalesRouter(io));
+app.use("/customers", customerRouter);
 app.use("/dashboard", dashboardRouter);
 app.use("/insights", insightsRouter);
 
-app.listen(PORT, () => {
-  console.log(`✅ Server is running on http://localhost:${PORT}`);
+// Start
+const PORT = process.env.PORT || 4000;
+server.listen(PORT, () => {
+  console.log(`✅ Server running with sockets at http://localhost:${PORT}`);
 });
